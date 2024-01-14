@@ -50,9 +50,14 @@ TabBar::TabBar(QWidget *parent) :
     connect(this, &QTabBar::tabCloseRequested, this, &TabBar::closeTab);
 
     ProjectExplorer::SessionManager *sm = ProjectExplorer::SessionManager::instance();
-    connect(sm, &ProjectExplorer::SessionManager::sessionLoaded, [this, em]() {
-        foreach (Core::DocumentModel::Entry *entry, Core::DocumentModel::entries())
+    connect(sm, &ProjectExplorer::SessionManager::sessionLoaded, [this, em](QString) {
+        Core::IEditor* curEd = em->currentEditor();
+        foreach (Core::DocumentModel::Entry *entry, Core::DocumentModel::entries()) {
             em->activateEditorForEntry(entry, Core::EditorManager::DoNotChangeCurrentEditor);
+        }
+        if (!Core::DocumentModel::entries().empty() && curEd) {
+            em->activateEditor(curEd, Core::EditorManager::DoNotChangeCurrentEditor);
+        }
     });
 
     const QString shortCutSequence = QStringLiteral("Ctrl+Alt+%1");
