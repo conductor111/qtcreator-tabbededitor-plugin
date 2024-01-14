@@ -94,7 +94,7 @@ void TabBar::addEditorTab(Core::IEditor *editor)
     Core::IDocument *document = editor->document();
 
     const int index = addTab(document->displayName());
-    setTabIcon(index, Core::FileIconProvider::icon(document->filePath().toFileInfo()));
+    setTabIcon(index, Core::FileIconProvider::icon(document->filePath()));
     setTabToolTip(index, document->filePath().toString());
 
     m_editors.append(editor);
@@ -136,7 +136,7 @@ void TabBar::closeTab(int index)
     if (index < 0 || index >= m_editors.size())
         return;
 
-    Core::EditorManager::instance()->closeEditor(m_editors.takeAt(index));
+    Core::EditorManager::instance()->closeEditors(QList<Core::IEditor*>{ m_editors.takeAt(index) });
     removeTab(index);
 }
 
