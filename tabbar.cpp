@@ -11,10 +11,16 @@
 #include <coreplugin/idocument.h>
 #include <projectexplorer/session.h>
 
+#include <coreplugin/icore.h>
+#include <coreplugin/settingsdatabase.h>
+
 #include <QMenu>
 #include <QMouseEvent>
 #include <QShortcut>
 #include <QTabBar>
+
+#include <vector>
+#include <list>
 
 using namespace Core::Internal;
 
@@ -50,7 +56,7 @@ TabBar::TabBar(QWidget *parent) :
     connect(this, &QTabBar::tabCloseRequested, this, &TabBar::closeTab);
 
     ProjectExplorer::SessionManager *sm = ProjectExplorer::SessionManager::instance();
-    connect(sm, &ProjectExplorer::SessionManager::sessionLoaded, [this, em](QString) {
+    connect(sm, &ProjectExplorer::SessionManager::sessionLoaded, [this, em](QString sessionName) {
         Core::IEditor* curEd = em->currentEditor();
         foreach (Core::DocumentModel::Entry *entry, Core::DocumentModel::entries()) {
             em->activateEditorForEntry(entry, Core::EditorManager::DoNotChangeCurrentEditor);
@@ -58,6 +64,23 @@ TabBar::TabBar(QWidget *parent) :
         if (!Core::DocumentModel::entries().empty() && curEd) {
             em->activateEditor(curEd, Core::EditorManager::DoNotChangeCurrentEditor);
         }
+        reorderTabs(sessionName);
+    });
+
+    connect(sm, &ProjectExplorer::SessionManager::aboutToSaveSession, [this, sm]() {
+        saveTabsInfo(sm->activeSession());
+    });
+
+    connect(sm, &ProjectExplorer::SessionManager::sessionRenamed, [this, em](const QString &oldName, const QString &newName) {
+        if (!Core::ICore::settingsDatabase()->contains("TabsInfo_" + oldName)) {
+            return;
+        }
+        Core::ICore::settingsDatabase()->setValue("TabsInfo_" + newName, Core::ICore::settingsDatabase()->value("TabsInfo_" + oldName));
+        Core::ICore::settingsDatabase()->remove("TabsInfo_" + oldName);
+    });
+
+    connect(sm, &ProjectExplorer::SessionManager::sessionRemoved, [this, em](const QString &name) {
+        Core::ICore::settingsDatabase()->remove("TabsInfo_" + name);
     });
 
     const QString shortCutSequence = QStringLiteral("Ctrl+Alt+%1");
@@ -161,6 +184,91 @@ void TabBar::nextTabAction()
         setCurrentIndex(index + 1);
     else
         setCurrentIndex(0);
+}
+
+void TabBar::saveTabsInfo(const QString& sessionName)
+{
+    QByteArray data;
+    QDataStream storage(&data, QIODevice::OpenModeFlag::WriteOnly);
+
+    for (int index = 0; index < m_editors.size(); ++index) {
+        const Utils::FilePath& filePath = m_editors[index]->document()->filePath();
+        if (filePath.isEmpty()) {
+            continue;
+        }
+        storage << filePath.toString();
+    }
+
+    Core::ICore::settingsDatabase()->setValue("TabsInfo_" + sessionName, qCompress(data).toBase64());
+}
+
+void TabBar::reorderTabs(const QString& sessionName)
+{
+    QByteArray storedTabsInfoBase64 = Core::ICore::settingsDatabase()->value("TabsInfo_" + sessionName).toByteArray();
+    if (storedTabsInfoBase64.isNull() || storedTabsInfoBase64.isEmpty()) {
+        return;
+    }
+
+    QByteArray ba = QByteArray::fromBase64(storedTabsInfoBase64);
+    QByteArray storedTabsInfo = qUncompress(ba);
+    if (storedTabsInfo.isNull() || storedTabsInfo.isEmpty()) {
+        return;
+    }
+
+    struct TStoredItem
+    {
+        QString filePath;
+        int curIndex{ -1 };
+        std::list<TStoredItem*>::iterator itCurItemsOrder;
+    };
+    std::vector<TStoredItem> storedItems;
+    std::list<TStoredItem*> curItemsOrder;
+
+    QDataStream storage(&storedTabsInfo, QIODevice::OpenModeFlag::ReadOnly);
+    QString filePath;
+    for (storage >> filePath; storage.status() == QDataStream::Status::Ok; storage >> filePath) {
+        storedItems.push_back({ filePath });
+    }
+
+    if (m_editors.size() != storedItems.size()) {
+        return;
+    }
+
+    for (int index = 0; index < m_editors.size(); ++index) {
+        const Utils::FilePath& filePath = m_editors[index]->document()->filePath();
+
+        bool found{ false };
+        for (TStoredItem& storedItem : storedItems) {
+            if (storedItem.filePath == filePath.toString()) {
+                found = true;
+                storedItem.curIndex = index;
+                curItemsOrder.push_back(&storedItem);
+                storedItem.itCurItemsOrder = std::next(curItemsOrder.rbegin()).base();
+                break;
+            }
+        }
+        if (!found) {
+            return;
+        }
+    }
+
+    int toIndex = 0;
+    for (TStoredItem& storedItem : storedItems) {
+        int fromIndex = storedItem.curIndex;
+
+        for (decltype(curItemsOrder)::reverse_iterator it{ storedItem.itCurItemsOrder }; it != curItemsOrder.rend(); ++it) {
+            (*it)->curIndex += 1;
+        }
+
+        curItemsOrder.erase(storedItem.itCurItemsOrder);
+        storedItem.itCurItemsOrder = curItemsOrder.end();
+
+        if (fromIndex != toIndex) {
+            moveTab(fromIndex, toIndex);
+        }
+
+        ++toIndex;
+    }
 }
 
 void TabBar::contextMenuEvent(QContextMenuEvent *event)

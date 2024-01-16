@@ -32,6 +32,9 @@ private slots:
     void prevTabAction();
     void nextTabAction();
 
+    void saveTabsInfo(const QString& sessionName);
+    void reorderTabs(const QString& sessionName);
+
 protected:
     void contextMenuEvent(QContextMenuEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
