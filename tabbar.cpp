@@ -65,6 +65,10 @@ TabBar::TabBar(QWidget *parent) :
             em->activateEditor(curEd, Core::EditorManager::DoNotChangeCurrentEditor);
         }
         reorderTabs(sessionName);
+        // to scrolling to the active tab after reordering
+        setUsesScrollButtons(false);
+        setUsesScrollButtons(true);
+        //////////////////////////////////////////////////////////////////////////
     });
 
     connect(sm, &ProjectExplorer::SessionManager::aboutToSaveSession, [this, sm]() {

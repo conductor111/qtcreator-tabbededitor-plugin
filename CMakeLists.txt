@@ -6,7 +6,7 @@ cmake_policy(SET CMP0054 NEW)
 # Qt Creator build path
 set(CMAKE_PREFIX_PATH "../qtcreator_build")
 # Path to Qt library if its location is custom
-#list(APPEND CMAKE_PREFIX_PATH "../Qt-5.15.7")
+list(APPEND CMAKE_PREFIX_PATH "../Qt-5.15.7")
 
 project(TabbedEditor)
 
